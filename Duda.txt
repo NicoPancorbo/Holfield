@@ -1,0 +1,230 @@
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "./gsl_rng.h"
+ 
+//Defino el número de pixeles que tiene la imagen
+#define N 30
+
+//Defino los numeros aleatorios como punteros
+gsl_rng *rand1;
+
+int main(){
+
+//La temperatura del sistema en kelvin:
+double T =pow(10,-4);
+//Y por uĺtimo el numero de pasos montecarlo que se van a utilizar
+int h = 100;
+
+//Si es igual a 1, la matriz será el patrón deformado un cierto grado
+//Si es 0, la distribución será aleatoria
+int distribucion = 0;
+double deformacion=0.3;
+
+//Las matrices que voy a utilizar
+int s[N][N];
+double w[N][N][N][N];
+double theta[N][N];
+int patron[N][N];
+
+//variables que voy a utilizar para calcular el solapamiento del patrón
+double sol,sol_medio, suma;
+sol_medio=0;
+sol=0;
+suma=0;
+
+FILE *hollow, *salida, *solapa;
+hollow = fopen("patron1.txt","r");
+salida = fopen("hopfieldpatron.txt","w");
+solapa = fopen("solapamiento.txt", "w");
+
+int i,j,k,l, aux, t, M, n, m;
+double delta_E, p, xi, a_mu;
+a_mu=0;
+
+
+
+//Llamamos a los números aleatorios creados antes del main 
+extern gsl_rng *rand1;
+int semilla1=288691288;
+rand1=gsl_rng_alloc(gsl_rng_taus);
+gsl_rng_set(rand1,semilla1);
+
+
+
+
+//Inicializamos la matriz con el patrón y theta a 0
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         fscanf(hollow, "%i", &(patron[i][j]));
+         theta[i][j]=0;
+}
+}
+
+
+//Ahora calculo el parámetro a^mu
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         a_mu = a_mu + patron[i][j];
+}
+}
+//Divido por N²
+a_mu = a_mu*pow(N,-2);
+
+
+//Inicializo la matriz de pesos a 0 antes de calcular los valores
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         for(k=0;k<N;k++){
+            for(l=0;l<N;l++){   
+                    w[i][j][k][l] = 0;
+                
+            }
+        }
+    }
+}
+
+//Ahora a partir de a_mu calculo la matriz w, que servirá para el hamiltoniano
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         for(k=0;k<N;k++){
+            for(l=0;l<N;l++){
+                if((i!=k) && (j!=1)){
+                    w[i][j][k][l] += 1.0 * pow(N,-2) * (patron[i][j]-a_mu) * (patron[k][l]-a_mu);
+                } else{
+                    w[i][j][k][l] = 0;
+                }
+}
+}
+}
+}
+
+//Ahora, la patriz theta
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         for(k=0;k<N;k++){
+            for(l=0;l<N;l++){
+                theta[i][j] = theta[i][j] + 0.5*w[i][j][k][l];
+                }
+}
+}
+}
+
+//Una vez tengo los parámetros iniciados, empiezo la distribucion inicial de matrices
+
+//DITRIBUCION ALEATORIA
+if(distribucion == 0){
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         s[i][j] = gsl_rng_uniform_int(rand1,2);
+}
+}
+}
+
+//DISTRIBUCION DEFORMADA
+if(distribucion == 1){
+//Inicio como la matriz del patron
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         s[i][j] = patron[i][j];
+}
+}
+//Ahora, intercambio deformacion*N² casillas (equivale al porcertaje de deformacion que le he metido)
+for(i=0; i<(deformacion*pow(N,2)) ; i++){
+    //Elijo dos enteros aleatorios que representan el punto random de la matriz que voy a cambiar
+    n = gsl_rng_uniform_int(rand1,N);
+    m = gsl_rng_uniform_int(rand1,N);
+    //Intercambio el valor de dicho punto
+    if(s[n][m]==0){
+        s[n][m]=1;
+    } else{
+        s[n][m]=0;
+    }
+    
+}
+}
+
+
+
+//Inicio el bucle donde se dan h pasos Montecarlo, donde cada paso Montecarlo hace N² iteraciones
+for(M=0;M<h;M++){
+
+
+//Para cada paso Montecarlo, imprimo la matriz
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+        if(j==N-1){
+            fprintf(salida, "%i", s[i][j]);  
+        } else{
+            fprintf(salida, "%i, ", s[i][j]);  
+        }
+              
+    }
+//Una vez ha impreso todas las columnas de la fila, salto de fila
+    fprintf(salida, "\n");
+}
+
+//Salto de linea una vez ha acabado el 'fotograma'
+fprintf(salida, "\n");
+
+delta_E = 0;
+    xi = 0;
+
+//Inicio el método Montecarlo donde se intenta cambiar la neurona N² veces para que al menos cada uno pueda cambiar
+    for(t=0; t<N*N ; t++){
+
+
+//Genero posiciones aleatorias de la matriz para cada iteración para después alterar sus espines o no
+        n = gsl_rng_uniform_int(rand1,N);
+        m = gsl_rng_uniform_int(rand1,N);
+
+//Calculo la energia del punto sin las condiciones de contorno:
+
+//energia para la casilla [n][m] despejando del hamiltoniano del sistema
+        for(k=0;k<N;k++){
+            for(l=0;l<N;l++){
+                delta_E = delta_E + w[n][m][k][l]*s[k][l];
+                }
+}
+        delta_E = (-0.5*delta_E + theta[n][m]) * (1 - 2*s[n][m]);
+            
+        
+
+//Calculo la probabilidad de transicion como el mínimo entre 1 y exp(-delta_E/T)
+        p = exp(-1 * delta_E/T);
+        if(p>1){
+            p=1;
+        }
+
+//Genero un número aleatorio uniforme entre 0 y 1 para compararlo con p. Si se cumple la condicion, el punto cambia de signo
+        xi = gsl_rng_uniform(rand1);
+        if(xi < p){
+            if(s[n][m]==0){
+            s[n][m]=1;
+            } else {
+            s[n][m]=0;
+            }
+        }
+}
+//Calculo el solapamiento del patron
+sol=0;
+for(i=0;i<N;i++){
+    for(j=0;j<N;j++){
+         sol = sol + (patron[i][j] - a_mu )*(s[i][j] - a_mu);
+}
+}
+sol = sol/(pow(N,2)*a_mu*(1-a_mu));
+
+//Voy acumulando el valor dentro de la variable sol_medio
+sol_medio = sol_medio + sol;
+
+}
+//divido por el numero de veces que he sumado
+sol_medio = sol_medio/(h*1.0);
+
+printf("El solapamiento medio del sistema es: %lf", sol_medio);
+
+fclose(salida);
+fclose(solapa);
+fclose(hollow);
+}
